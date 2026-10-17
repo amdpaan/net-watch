@@ -39,6 +39,12 @@ CREATE TABLE IF NOT EXISTS sightings (
     PRIMARY KEY (scan_id, mac)
 );
 CREATE INDEX IF NOT EXISTS sightings_mac_ts ON sightings (mac, ts);
+CREATE TABLE IF NOT EXISTS expected (   -- named ahead of time; becomes a device (silently) when it joins
+    mac      TEXT PRIMARY KEY,
+    label    TEXT NOT NULL,
+    type     TEXT,
+    added_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT
@@ -61,7 +67,8 @@ def is_first_scan(con):
 
 def record_scan(con, result, vendors, duration=None, now=None):
     """Store one scan. `vendors` = {mac: vendor}. Returns the MACs never seen before (empty on the very first
-    scan: that one is the baseline, marked as already alerted)."""
+    scan: that one is the baseline, marked as already alerted). Pre-named devices (`expected`) arrive with
+    their name and type, already marked as alerted, and aren't returned: you said they're coming."""
     now = int(now or time.time())
     info = result.info
     baseline = is_first_scan(con) and get_meta(con, "baseline_ts") is None
@@ -81,11 +88,15 @@ def record_scan(con, result, vendors, duration=None, now=None):
                             "hostname=COALESCE(?, hostname) WHERE mac=?",
                             (now, d.ip, vendor, d.hostname, d.mac))
             else:
-                con.execute("INSERT INTO devices (mac, vendor, hostname, is_random_mac, first_seen, last_seen, "
-                            "last_ip, alerted) VALUES (?,?,?,?,?,?,?,?)",
-                            (d.mac, vendor, d.hostname, int(is_private_mac(d.mac)), now, now, d.ip,
-                             int(baseline or d.is_self or d.is_gateway)))
-                if not baseline:
+                pre = con.execute("SELECT label, type FROM expected WHERE mac=?", (d.mac,)).fetchone()
+                con.execute("INSERT INTO devices (mac, label, type, vendor, hostname, is_random_mac, first_seen, "
+                            "last_seen, last_ip, alerted) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                            (d.mac, pre[0] if pre else None, pre[1] if pre else None, vendor, d.hostname,
+                             int(is_private_mac(d.mac)), now, now, d.ip,
+                             int(baseline or bool(pre) or d.is_self or d.is_gateway)))
+                if pre:
+                    con.execute("DELETE FROM expected WHERE mac=?", (d.mac,))
+                elif not baseline:
                     new.append(d.mac)
             con.execute("INSERT INTO sightings (scan_id, mac, ip, ts) VALUES (?,?,?,?)",
                         (scan_id, d.mac, d.ip, now))
@@ -159,10 +170,35 @@ def set_label(con, mac, label=None, type_=None):
 
 
 def forget(con, mac):
-    """Delete a device and its history. It'll count as new (and alert) if it shows up again."""
+    """Delete a device and its history, or a pre-named device that hasn't joined yet. Either way it'll count
+    as new (and alert) if it shows up later."""
     with con:
         con.execute("DELETE FROM sightings WHERE mac=?", (mac,))
-        return con.execute("DELETE FROM devices WHERE mac=?", (mac,)).rowcount > 0
+        waiting = con.execute("DELETE FROM expected WHERE mac=?", (mac,)).rowcount
+        return con.execute("DELETE FROM devices WHERE mac=?", (mac,)).rowcount + waiting > 0
+
+
+def add_expected(con, mac, label, type_=None, now=None):
+    """Name a device before it joins. Returns "expected", or "labeled" when it has already been seen (then
+    it's simply named, as `set_label` would)."""
+    label = (label or "").strip()
+    if not label or len(label) > 60:
+        raise ValueError("name must be 1 to 60 characters")
+    if type_ not in (None, "") and type_ not in TYPES:
+        raise ValueError("type must be one of: " + ", ".join(TYPES))
+    if int(mac.split(":")[0], 16) & 0x01 or mac == "00:00:00:00:00:00":
+        raise ValueError("%s is a multicast/broadcast address, not a device" % mac)
+    if get(con, mac):
+        set_label(con, mac, label, type_ or None)  # no type given: keep the one it has
+        return "labeled"
+    with con:
+        con.execute("INSERT OR REPLACE INTO expected (mac, label, type, added_at) VALUES (?,?,?,?)",
+                    (mac, label, type_ or None, int(now or time.time())))
+    return "expected"
+
+
+def expected(con):
+    return [dict(r) for r in con.execute("SELECT * FROM expected ORDER BY added_at, mac")]
 
 
 def mark_alerted(con, mac):

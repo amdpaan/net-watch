@@ -178,6 +178,58 @@ function renderBanner() {
   )));
 }
 
+function renderWaiting() {
+  const items = state.data.expected || [];
+  $("waiting").hidden = items.length === 0;
+  $("waiting-list").replaceChildren(...items.map((e) => el("li", {},
+    icon(e.type || "other"),
+    el("div", {},
+      el("div", { class: "name" }, el("span", { text: e.label })),
+      el("div", { class: "meta" }, el("span", { class: "mono", text: e.mac }), " · never seen · added " + day(e.added_at))),
+    el("button", { class: "btn ghost", type: "button", text: "Remove", onclick: () => removeWaiting(e) }),
+  )));
+}
+
+async function removeWaiting(e) {
+  if (!confirm("Remove " + e.label + " from the waiting list? If it joins later, it counts as new and alerts.")) return;
+  try { await api("/api/devices/" + e.mac + "/forget", {}); } catch (err) { alert("Couldn't remove it: " + err.message); }
+  refresh();
+}
+
+// ---------- add a device before it joins
+function openAdd() {
+  $("add-form").reset();
+  $("add-error").hidden = true;
+  typePicker($("a-types"), "atype", "phone");
+  $("add-sheet").showModal();
+  $("a-mac").focus();
+}
+
+async function submitAdd(ev) {
+  ev.preventDefault();
+  const err = $("add-error");
+  const mac = $("a-mac").value.trim();
+  const label = $("a-label").value.trim();
+  const checked = document.querySelector("#a-types input:checked");
+  if (!mac || !label) {
+    err.textContent = !mac ? "Enter the device's Wi-Fi address." : "Give it a name.";
+    err.hidden = false;
+    return;
+  }
+  $("add-save").disabled = true;
+  try {
+    const res = await api("/api/expected", { mac, label, type: checked ? checked.value : null });
+    $("add-sheet").close();
+    if (res.status === "labeled") alert(label + " was already on your network, so it's been named instead.");
+    refresh();
+  } catch (e) {
+    err.textContent = e.message;
+    err.hidden = false;
+  } finally {
+    $("add-save").disabled = false;
+  }
+}
+
 function render() {
   const c = state.data.counts;
   $("c-online").textContent = c.online;
@@ -186,6 +238,7 @@ function render() {
   renderStatus();
   renderBanner();
   renderTable();
+  renderWaiting();
 }
 
 // ---------- data
@@ -210,6 +263,18 @@ async function scanNow() {
   setTimeout(refresh, 300);
 }
 
+// ---------- type picker (device sheet and add form)
+function typePicker(box, name, selected) {
+  box.replaceChildren();
+  for (const t of state.data.types) {
+    const id = name + "-" + t;
+    const input = el("input", { type: "radio", name, id, value: t });
+    input.checked = selected === t;
+    const label = el("label", { for: id }, icon(t).firstChild.cloneNode(true), el("span", { text: TYPE_NAMES[t] || t }));
+    box.append(input, label);
+  }
+}
+
 // ---------- detail sheet
 function deviceByMac(mac) {
   return state.data.devices.find((d) => d.mac === mac);
@@ -230,15 +295,7 @@ function openSheet(mac) {
   $("f-label").value = d.label || "";
   $("f-label").placeholder = d.hostname || "e.g. Living room TV";
 
-  const types = $("f-types");
-  types.replaceChildren();
-  for (const t of state.data.types) {
-    const id = "type-" + t;
-    const input = el("input", { type: "radio", name: "type", id, value: t });
-    input.checked = d.type === t;
-    const label = el("label", { for: id }, icon(t).firstChild.cloneNode(true), el("span", { text: TYPE_NAMES[t] || t }));
-    types.append(input, label);
-  }
+  typePicker($("f-types"), "type", d.type);
 
   const facts = $("facts");
   facts.replaceChildren();
@@ -258,7 +315,7 @@ function openSheet(mac) {
 
 async function saveSheet() {
   const mac = state.open;
-  const checked = document.querySelector('#f-types input:checked');
+  const checked = document.querySelector("#f-types input:checked");
   const d = deviceByMac(mac);
   const body = { label: $("f-label").value.trim() };
   if (checked && (d.type_set || checked.value !== d.type)) body.type = checked.value;
@@ -372,6 +429,9 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   document.querySelectorAll("[data-close]").forEach((b) => b.addEventListener("click", () => $("sheet").close("cancel")));
   $("forget-btn").addEventListener("click", forgetDevice);
+  $("add-btn").addEventListener("click", openAdd);
+  $("add-form").addEventListener("submit", submitAdd);
+  document.querySelectorAll("[data-close-add]").forEach((b) => b.addEventListener("click", () => $("add-sheet").close()));
   document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
   refresh();
 });

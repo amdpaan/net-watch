@@ -136,6 +136,7 @@ class App:
             "devices": [dict(device_json(d, now), new=d["mac"] in new_macs) for d in devices],
             "new": [device_json(d, now) for d in devices if d["mac"] in new_macs],
             "last_scan": dict(scan) if scan else None,
+            "expected": db.expected(con),
             "home_subnet": cfg.get("subnet"),
             "status": dict(self.worker.status, scanning=self.worker.scanning),
             "types": db.TYPES,
@@ -267,6 +268,17 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/api/scan":
             started = self.app.worker.start()
             return self.json({"started": started, "scanning": True}, 202)
+        if url.path == "/api/expected":
+            mac = netinfo.normalize_mac(str(data.get("mac") or "").strip().replace("-", ":"))
+            if not mac:
+                return self.error(400, "That isn't a Wi-Fi (MAC) address, e.g. a6:e9:08:11:22:33")
+            if not isinstance(data.get("label"), str):
+                return self.error(400, "name is required")
+            try:
+                status = db.add_expected(db.connect(), mac, data["label"], data.get("type") or None)
+            except ValueError as e:
+                return self.error(400, str(e))
+            return self.json({"ok": True, "status": status, "mac": mac})
         if url.path == "/api/dismiss":
             db.set_meta(db.connect(), "dismissed_before", int(time.time()) + 1)
             return self.json({"ok": True})

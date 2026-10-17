@@ -48,7 +48,10 @@
         <button class="chip" data-filter="online" type="button">Online</button>
         <button class="chip" data-filter="unknown" type="button">Unknown</button>
       </div>
-      <input type="search" id="search" placeholder="Search name, IP, vendor, MAC" aria-label="Search devices">
+      <div class="tools">
+        <input type="search" id="search" placeholder="Search name, IP, vendor, MAC" aria-label="Search devices">
+        <button class="btn ghost" id="add-btn" type="button">Add device</button>
+      </div>
     </div>
     <table class="devices">
       <thead>
@@ -65,7 +68,51 @@
     </table>
     <p class="empty" id="empty" hidden></p>
   </section>
+
+  <section class="panel waiting" id="waiting" hidden aria-labelledby="waiting-title">
+    <div class="waiting-head">
+      <h2 id="waiting-title">Waiting to join</h2>
+      <p class="sub">Named ahead of time. They get their name and join without an alert.</p>
+    </div>
+    <ul id="waiting-list"></ul>
+  </section>
 </main>
+
+<dialog id="add-sheet" aria-labelledby="add-title">
+  <form method="dialog" id="add-form" novalidate>
+    <header class="sheet-head">
+      <div>
+        <h2 id="add-title">Add a device before it joins</h2>
+        <p class="sub">When this address shows up, it's named automatically and you get no alert.</p>
+      </div>
+      <button class="icon-btn" type="button" data-close-add aria-label="Close">✕</button>
+    </header>
+
+    <label class="field">
+      <span>Wi-Fi address (MAC)</span>
+      <input id="a-mac" placeholder="a6:e9:08:11:22:33" autocomplete="off" autocapitalize="off" spellcheck="false" class="mono-input">
+    </label>
+    <p class="hint">iPhone: Settings → Wi-Fi → ⓘ next to your network → Wi-Fi Address. Android: Wi-Fi → your network → gear → MAC address. Ask them to set the private address to Fixed.</p>
+
+    <label class="field">
+      <span>Name</span>
+      <input id="a-label" maxlength="60" placeholder="e.g. Mum's phone" autocomplete="off">
+    </label>
+
+    <fieldset class="field">
+      <legend>Type</legend>
+      <div class="types" id="a-types"></div>
+    </fieldset>
+
+    <p class="form-error" id="add-error" role="alert" hidden></p>
+
+    <footer class="sheet-foot">
+      <span class="spacer"></span>
+      <button class="btn ghost" type="button" data-close-add>Cancel</button>
+      <button class="btn" id="add-save" type="submit">Add device</button>
+    </footer>
+  </form>
+</dialog>
 
 <dialog id="sheet" aria-labelledby="sheet-title">
   <form method="dialog" id="sheet-form">

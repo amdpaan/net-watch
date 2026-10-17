@@ -116,11 +116,41 @@ def cmd_label(args):
 
 
 def cmd_forget(args):
-    if db.forget(db.connect(), args.mac):
-        print("Forgot %s and its history. If it shows up again it counts as new." % args.mac)
+    con = db.connect()
+    waiting = any(e["mac"] == args.mac for e in db.expected(con))
+    if db.forget(con, args.mac):
+        if waiting:
+            print("Removed the pre-named %s. If it joins, it counts as new." % args.mac)
+        else:
+            print("Forgot %s and its history. If it shows up again it counts as new." % args.mac)
         return 0
     print("No device %s." % args.mac)
     return 1
+
+
+def cmd_add(args):
+    con = db.connect()
+    try:
+        status = db.add_expected(con, args.mac, args.name, args.type)
+    except ValueError as e:
+        sys.exit("net-watch: %s" % e)
+    if status == "labeled":
+        print("%s is already on your list, so it's simply named %s now." % (args.mac, args.name))
+    else:
+        print("%s → %s. It'll be named automatically when it joins, with no alert." % (args.mac, args.name))
+        if netinfo.is_private_mac(args.mac):
+            print("This is a private (randomized) address: it only matches while that phone keeps it Fixed "
+                  "for your Wi-Fi.")
+    return 0
+
+
+def cmd_expected(args):
+    rows = [[e["label"], e["type"] or "", e["mac"], when(e["added_at"])] for e in db.expected(db.connect())]
+    if not rows:
+        print("No pre-named devices waiting. Add one with `netwatch add <mac> \"Name\" --type phone`.")
+        return 0
+    print(table(rows, ["NAME", "TYPE", "MAC", "ADDED"]))
+    return 0
 
 
 def cmd_update_oui(args):
@@ -233,7 +263,16 @@ def build_parser():
     s.add_argument("--type", choices=db.TYPES + ("",), help="device type ('' = guess again)")
     s.set_defaults(func=cmd_label)
 
-    s = sub.add_parser("forget", help="delete a device and its history")
+    s = sub.add_parser("add", help="name a device before it joins (it then joins silently)")
+    s.add_argument("mac", type=mac_arg)
+    s.add_argument("name")
+    s.add_argument("--type", choices=db.TYPES)
+    s.set_defaults(func=cmd_add)
+
+    s = sub.add_parser("expected", help="list pre-named devices that haven't joined yet")
+    s.set_defaults(func=cmd_expected)
+
+    s = sub.add_parser("forget", help="delete a device and its history (or a pre-named one)")
     s.add_argument("mac", type=mac_arg)
     s.set_defaults(func=cmd_forget)
 

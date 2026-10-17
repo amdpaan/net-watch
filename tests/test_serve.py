@@ -205,3 +205,30 @@ def test_timeline_endpoint(local):
 
 def test_summary_needs_token_from_lan(lan):
     assert request(lan, "GET", "/api/summary")[0] == 401
+
+
+def test_add_expected_via_api(local):
+    status, data, _ = request(local, "POST", "/api/expected",
+                              {"mac": "A2-00-00-00-00-40", "label": "Mum's phone", "type": "phone"})
+    assert status == 200 and data == {"ok": True, "status": "expected", "mac": "a2:00:00:00:00:40"}
+    _, snap, _ = request(local, "GET", "/api/devices")
+    assert [e["label"] for e in snap["expected"]] == ["Mum's phone"]
+    assert snap["counts"]["unknown"] == 2  # waiting devices don't count until they join
+    assert request(local, "POST", "/api/devices/a2:00:00:00:00:40/forget", {})[0] == 200
+    assert request(local, "GET", "/api/devices")[1]["expected"] == []
+
+
+def test_add_expected_already_seen(local):
+    status, data, _ = request(local, "POST", "/api/expected", {"mac": TV, "label": "TV"})
+    assert status == 200 and data["status"] == "labeled"
+    assert db.get(db.connect(), TV)["label"] == "TV"
+
+
+@pytest.mark.parametrize("body", [{"mac": "nope", "label": "x"}, {"mac": "a2:00:00:00:00:40"},
+                                  {"mac": "a2:00:00:00:00:40", "label": "x", "type": "toaster"}])
+def test_add_expected_bad_input(local, body):
+    assert request(local, "POST", "/api/expected", body)[0] == 400
+
+
+def test_add_expected_needs_token_from_lan(lan):
+    assert request(lan, "POST", "/api/expected", {"mac": "a2:00:00:00:00:40", "label": "x"})[0] == 401

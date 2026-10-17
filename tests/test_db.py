@@ -118,3 +118,60 @@ def test_summary_counts(con):
     s = db.summary(con, on_home_network=True, now=1400)
     assert {k: s[k] for k in ("online", "known", "unknown", "new_today", "on_home_network")} == \
         {"online": 3, "known": 1, "unknown": 2, "new_today": 1, "on_home_network": True}
+
+
+MUM = Device("192.168.50.40", "a2:00:00:00:00:40")
+
+
+def test_prenamed_device_joins_silently(con):
+    scan(con, [ROUTER, SELF], now=1000)  # baseline
+    assert db.add_expected(con, MUM.mac, "Mum's phone", "phone", now=1100) == "expected"
+    assert [e["label"] for e in db.expected(con)] == ["Mum's phone"]
+    assert scan(con, [ROUTER, SELF, MUM], now=1300) == []  # not "new": no alert, no NEW marker
+    mum = db.get(con, MUM.mac)
+    assert (mum["label"], mum["type"], mum["alerted"]) == ("Mum's phone", "phone", 1)
+    assert db.expected(con) == []  # off the waiting list
+    assert db.recent_new(con, now=1400) == []  # and not in the banner
+
+
+def test_prenamed_before_the_baseline(con):
+    db.add_expected(con, MUM.mac, "Mum's phone", now=900)
+    assert scan(con, [ROUTER, MUM], now=1000) == []
+    assert db.get(con, MUM.mac)["label"] == "Mum's phone"
+
+
+def test_other_new_devices_still_alert(con):
+    scan(con, [ROUTER], now=1000)
+    db.add_expected(con, MUM.mac, "Mum's phone")
+    assert scan(con, [ROUTER, MUM, TV], now=1300) == [TV.mac]
+
+
+def test_add_expected_for_a_device_already_seen_just_names_it(con):
+    scan(con, [ROUTER, TV], now=1000)
+    db.set_label(con, TV.mac, type_="tv")
+    assert db.add_expected(con, TV.mac, "Living room TV") == "labeled"
+    tv = db.get(con, TV.mac)
+    assert (tv["label"], tv["type"]) == ("Living room TV", "tv")  # type kept
+    assert db.expected(con) == []
+
+
+@pytest.mark.parametrize("mac, label, type_", [
+    ("a2:00:00:00:00:40", "", None),
+    ("a2:00:00:00:00:40", "x" * 61, None),
+    ("a2:00:00:00:00:40", "Mum", "toaster"),
+    ("01:00:5e:00:00:fb", "Multicast", None),
+    ("ff:ff:ff:ff:ff:ff", "Broadcast", None),
+    ("00:00:00:00:00:00", "Zero", None),
+])
+def test_add_expected_validation(con, mac, label, type_):
+    with pytest.raises(ValueError):
+        db.add_expected(con, mac, label, type_)
+    assert db.expected(con) == []
+
+
+def test_forget_removes_a_waiting_device(con):
+    scan(con, [ROUTER], now=1000)
+    db.add_expected(con, MUM.mac, "Mum's phone")
+    assert db.forget(con, MUM.mac)
+    assert db.expected(con) == []
+    assert scan(con, [ROUTER, MUM], now=1300) == [MUM.mac]  # unknown again → alerts

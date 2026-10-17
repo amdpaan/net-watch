@@ -51,6 +51,11 @@ uses only the Python that ships with macOS (`/usr/bin/python3`, standard library
    address has the same hostname as a device you've labeled, the alert says "Possibly <that device> with a
    new private address" instead.
 
+8. **Pre-named devices.** Know a device's Wi-Fi address before it joins (a family phone that already
+   knows your Wi-Fi, a TV's sticker)? Add it with `netwatch add` or **Add device** in the dashboard. It
+   waits under "Waiting to join" and, when it shows up, it's named and typed automatically with no alert.
+   Phones with a private address only match while it's set to Fixed for your network.
+
 ## Setup
 
 Requirements: macOS (Apple Silicon or Intel) and the built-in `/usr/bin/python3`. Nothing to install.
@@ -90,7 +95,9 @@ netwatch scan --no-notify
 netwatch devices         # everything seen so far: online / offline for X, first seen
 netwatch devices --online
 netwatch label <mac> "Living room TV" --type tv   # types: phone, laptop, tv, router, other
-netwatch forget <mac>    # delete a device and its history (it'll count as new if it returns)
+netwatch add <mac> "Mum's phone" --type phone   # name a device before it joins (joins silently)
+netwatch expected        # pre-named devices that haven't joined yet
+netwatch forget <mac>    # delete a device and its history, or a waiting one (counts as new if it returns)
 netwatch update-oui      # refresh the vendor list
 netwatch serve           # dashboard at http://127.0.0.1:8765 + a scan every 5 min (--interval N)
 netwatch serve --lan     # also open it from your phone on the same Wi-Fi (prints a link with a token)

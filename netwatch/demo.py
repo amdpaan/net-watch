@@ -73,6 +73,7 @@ def build(days=7, step=15 * 60, now=None):
     for mac, _, label, type_, *_ in DEVICES:
         if label or type_:
             db.set_label(con, mac, label, type_)
+    db.add_expected(con, "a2:00:00:00:00:41", "Grandma's tablet", "other", now=now - 3 * 86400)
     return con
 
 
