@@ -8,8 +8,8 @@ device it finds, remembers them, lets you label them and alerts you when an unkn
 Everything runs locally on your Mac. It's free and open source, with no cloud, accounts or paid APIs, and it
 uses only the Python that ships with macOS (`/usr/bin/python3`, standard library only).
 
-> **Status:** M1 works: network detection, the safety lock and `netwatch scan`. Storage, vendors, the
-> dashboard, alerts and the timeline are coming in the next milestones.
+> **Status:** M1–M2 work: network detection, the safety lock, scanning, the device database, vendors and
+> new-device detection. The dashboard, alerts and the timeline are coming in the next milestones.
 
 ## Screenshots
 
@@ -28,6 +28,14 @@ _Coming with the dashboard (M3). Screenshots will use made-up devices and fake M
    `netwatch scan --nmap` adds an unprivileged `nmap -sn` pass; it's optional.
 4. **Names.** Reverse DNS goes through macOS's mDNSResponder, so it finds names from your router's DNS and
    from Bonjour (`.local`).
+5. **Vendors.** The first scan downloads Wireshark's `manuf` file (the IEEE MAC assignments, ~3 MB) once.
+   After that, lookups are offline and match the most specific block first (/36, /28, then /24).
+   Phones and laptops often use a **private (randomized) MAC**: the "locally administered" bit is set, so
+   no vendor owns it. Those show as "Private MAC" instead of "Unknown vendor".
+6. **Memory.** Each scan is saved to SQLite: one row per device (label, type, vendor, hostname, first and
+   last seen, last IP) and one sighting per device per scan. Sightings older than 90 days are pruned.
+   The **first scan is a baseline**: whatever is on your network then counts as already seen, so you don't
+   get a burst of alerts. After that, any MAC never seen before is a new device.
 
 ## Setup
 
@@ -52,6 +60,11 @@ open **System Settings → Privacy & Security → Local Network** and turn on th
 ```sh
 netwatch scan            # one scan, prints a table (asks to confirm home on first run)
 netwatch scan --nmap     # also run nmap -sn if installed
+netwatch devices         # everything seen so far: online / offline for X, first seen
+netwatch devices --online
+netwatch label <mac> "Living room TV" --type tv   # types: phone, laptop, tv, router, other
+netwatch forget <mac>    # delete a device and its history (it'll count as new if it returns)
+netwatch update-oui      # refresh the vendor list
 netwatch home            # show the saved home network
 netwatch home --reset    # new router? save the current network as home
 netwatch home --forget   # forget it (nothing gets scanned until you confirm again)

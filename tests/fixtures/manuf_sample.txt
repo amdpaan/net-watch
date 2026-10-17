@@ -1,0 +1,8 @@
+# Sample in Wireshark's manuf format (made-up vendors except the IANA documentation block).
+00:00:5E         	ICANNIANADep	ICANN, IANA Department
+00:00:5E:00:40/36	ExampleSixth	Example Thirty-Six Bit Co.,Ltd.
+00:00:5E:10/28	ExampleTwen	Example Twenty-Eight Inc.
+70:B3:D5         	IEEERegistr	IEEE Registration Authority
+70:B3:D5:12:30/36	TinySensor	Tiny Sensor GmbH
+10:20:30         	Fruitco     	Fruitco, Inc.
+40:50:60         	Telly       	Telly Electronics Co.,Ltd

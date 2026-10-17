@@ -61,3 +61,29 @@ def test_permission_problem(info, system):
     home.save_home(info)
     with pytest.raises(scanner.PermissionProblem):
         scanner.scan(info, pinger=lambda ip: (False, True), runner=lambda c, timeout=10: "", resolve=no_names)
+
+
+def test_scan_and_store(info, system, monkeypatch):
+    from conftest import FIXTURES
+    from netwatch import db, oui
+    monkeypatch.setattr(oui, "have_cache", lambda: True)
+    oui.load(FIXTURES / "manuf_sample.txt")
+    home.save_home(info)
+    kw = dict(pinger=lambda ip: (False, False), runner=system, resolve=no_names, log=lambda *_: None)
+    first = scanner.scan_and_store(info, **kw)
+    assert first.baseline and first.new == []
+    vendors = {d["mac"]: d["vendor"] for d in db.devices(db.connect())}
+    assert vendors["00:00:5e:00:53:2a"] == "ICANN, IANA Department"
+    assert vendors["a2:11:22:33:44:55"] == "Private MAC"
+    second = scanner.scan_and_store(info, **kw)
+    assert not second.baseline and second.new == []
+    oui._table = None
+
+
+def test_scan_and_store_checks_lock_first(info, system, monkeypatch):
+    from netwatch import oui
+    downloads = []
+    monkeypatch.setattr(oui, "download", lambda *a, **k: downloads.append(1))
+    with pytest.raises(scanner.ScanRefused):
+        scanner.scan_and_store(info, pinger=lambda ip: (True, False), runner=system, resolve=no_names)
+    assert downloads == []
