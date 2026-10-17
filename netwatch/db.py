@@ -168,3 +168,49 @@ def forget(con, mac):
 def mark_alerted(con, mac):
     with con:
         con.execute("UPDATE devices SET alerted=1 WHERE mac=?", (mac,))
+
+
+def timeline(con, mac, days=7, now=None):
+    """Hourly presence for the last `days` days in local time. Each hour is the share of that hour's scans
+    that saw the device (0..1), or None when no scan ran (Mac asleep, away, ...)."""
+    now = int(now or time.time())
+    t = time.localtime(now)
+    # local midnight of each day; mktime normalises day 0/-1 across month ends and handles DST
+    starts = [int(time.mktime((t.tm_year, t.tm_mon, t.tm_mday - i, 0, 0, 0, 0, 0, -1)))
+              for i in range(days - 1, -1, -1)]
+    window = starts[0]
+    scans = [r[0] for r in con.execute("SELECT ts FROM scans WHERE ts >= ?", (window,))]
+    seen = {r[0] for r in con.execute("SELECT ts FROM sightings WHERE mac=? AND ts >= ?", (mac, window))}
+    total, hits = {}, {}
+    for ts in scans:
+        lt = time.localtime(ts)
+        key = (time.strftime("%Y-%m-%d", lt), lt.tm_hour)
+        total[key] = total.get(key, 0) + 1
+        if ts in seen:
+            hits[key] = hits.get(key, 0) + 1
+    out = []
+    for start in starts:
+        date = time.strftime("%Y-%m-%d", time.localtime(start))
+        hours = []
+        for h in range(24):
+            n = total.get((date, h))
+            hours.append(None if not n else round(hits.get((date, h), 0) / n, 2))
+        out.append({"date": date, "label": time.strftime("%a %d", time.localtime(start)), "hours": hours})
+    return {"days": out, "online_pct": round(100.0 * len(seen) / len(scans), 1) if scans else None,
+            "scans": len(scans), "now_hour": t.tm_hour}
+
+
+def summary(con, on_home_network=None, now=None):
+    """Counts for widgets: online now, known (labeled), unknown (not labeled)."""
+    rows = devices(con)
+    scan = last_scan(con)
+    known = sum(1 for d in rows if d["label"])
+    return {
+        "online": sum(1 for d in rows if d["online"]),
+        "known": known,
+        "unknown": len(rows) - known,
+        "new_today": len(recent_new(con, now=now)),
+        "last_scan": scan["ts"] if scan else None,
+        "on_home_network": on_home_network,
+        "generated_at": int(now or time.time()),
+    }

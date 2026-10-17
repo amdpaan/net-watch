@@ -8,13 +8,20 @@ device it finds, remembers them, lets you label them and alerts you when an unkn
 Everything runs locally on your Mac. It's free and open source, with no cloud, accounts or paid APIs, and it
 uses only the Python that ships with macOS (`/usr/bin/python3`, standard library only).
 
-> **Status:** M1–M4 work: network detection, the safety lock, scanning, the device database, vendors,
-> the web dashboard with labeling, new-device notifications, background scanning and the login agent.
-> The `/api/summary` endpoint and the 7-day timeline are coming next.
-
 ## Screenshots
 
-_Coming with the dashboard (M3). Screenshots will use made-up devices and fake MAC addresses._
+![The dashboard: summary cards, a new-device banner and the device table](docs/screenshots/dash-light.jpg)
+
+![A device's detail sheet: name, type and when it was online over the last 7 days](docs/screenshots/detail.jpg)
+
+<p align="center">
+  <img src="docs/screenshots/dash-dark.jpg" width="62%" alt="The dashboard in dark mode">
+  <img src="docs/screenshots/phone.jpg" width="17%" alt="The dashboard on a phone">
+  <img src="docs/screenshots/phone-detail.jpg" width="17%" alt="A device's detail sheet on a phone">
+</p>
+
+<sub>Screenshots come from the built-in demo (`netwatch demo`): made-up devices and fake MAC addresses
+(the IANA documentation range and invented private addresses).</sub>
 
 ## How it works
 
@@ -104,6 +111,26 @@ switches), and the layout works at phone width.
 `Host` header, so a website you visit can't reach it through DNS rebinding. With `--lan` other devices on
 your Wi-Fi can connect, but only with the token in the printed link. The token then moves into a cookie and
 leaves the URL. Without it they can't read anything, let alone edit labels. `--new-token` rotates it.
+
+## For widgets: `/api/summary` and `summary.json`
+
+```sh
+curl -s http://127.0.0.1:8765/api/summary
+```
+```json
+{"online": 8, "known": 6, "unknown": 6, "new_today": 1, "last_scan": 1792225800,
+ "on_home_network": true, "generated_at": 1792226142}
+```
+
+`known` = devices you've labeled, `unknown` = not labeled yet, `new_today` = devices that joined in the last
+24 hours and haven't been labeled or dismissed. `on_home_network` is `null` while no scan has run yet.
+Every scan also writes the same JSON to `~/Library/Application Support/net-watch/summary.json`. A desktop
+widget (e.g. Übersicht) can read that file even when the dashboard isn't running. Keys are only ever
+added, never renamed.
+
+Each device's sheet in the dashboard also shows a 7-day × 24-hour strip: how much of each hour's scans saw
+it (darker = more), with dashed cells for hours when no scan ran (Mac asleep or away). It comes from
+`GET /api/devices/<mac>/timeline`.
 
 ## Your data
 

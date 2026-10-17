@@ -87,3 +87,15 @@ def test_scan_and_store_checks_lock_first(info, system, monkeypatch):
     with pytest.raises(scanner.ScanRefused):
         scanner.scan_and_store(info, pinger=lambda ip: (True, False), runner=system, resolve=no_names)
     assert downloads == []
+
+
+def test_scan_writes_summary_json(info, system, monkeypatch, data_home):
+    import json
+    from netwatch import oui
+    monkeypatch.setattr(oui, "have_cache", lambda: True)
+    home.save_home(info)
+    scanner.scan_and_store(info, pinger=lambda ip: (False, False), runner=system, resolve=no_names,
+                           log=lambda *_: None)
+    summary = json.loads((data_home / "summary.json").read_text())
+    assert summary["online"] == 5 and summary["on_home_network"] is True
+    oui._table = None

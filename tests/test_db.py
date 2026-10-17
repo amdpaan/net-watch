@@ -92,3 +92,29 @@ def test_prune_old_sightings(con):
 
 def test_db_lives_in_data_home(data_home, con):
     assert (data_home / "netwatch.db").exists()
+
+
+def test_timeline_buckets(con):
+    import time as _t
+    t = _t.localtime()
+    noon = int(_t.mktime((t.tm_year, t.tm_mon, t.tm_mday - 1, 12, 0, 0, 0, 0, -1)))  # yesterday 12:00
+    now = noon + 86400 - 60  # today 11:59
+    scan(con, [ROUTER, TV], now=noon)
+    scan(con, [ROUTER], now=noon + 600)      # same hour: TV in 1 of 2 scans
+    scan(con, [ROUTER, TV], now=noon + 3600)  # 13:00: seen
+    tl = db.timeline(con, TV.mac, now=now)
+    assert len(tl["days"]) == 7
+    yesterday = tl["days"][-2]["hours"]
+    assert yesterday[12] == 0.5 and yesterday[13] == 1.0 and yesterday[14] is None
+    assert tl["online_pct"] == pytest.approx(66.7)
+    assert tl["now_hour"] == 11
+    assert db.timeline(con, "00:00:5e:00:53:77", now=now)["online_pct"] == 0.0
+
+
+def test_summary_counts(con):
+    scan(con, [ROUTER, SELF], now=1000)
+    scan(con, [ROUTER, SELF, TV], now=1300)
+    db.set_label(con, ROUTER.mac, "Router")
+    s = db.summary(con, on_home_network=True, now=1400)
+    assert {k: s[k] for k in ("online", "known", "unknown", "new_today", "on_home_network")} == \
+        {"online": 3, "known": 1, "unknown": 2, "new_today": 1, "on_home_network": True}

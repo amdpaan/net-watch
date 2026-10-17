@@ -282,6 +282,69 @@ async function forgetDevice() {
   refresh();
 }
 
+// ---------- 7-day timeline: one row per day, one cell per hour, filled by the share of scans that saw it
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+function svg(tag, attrs, text) {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function drawTimeline(tl) {
+  const cell = 14, gap = 2, left = 46, top = 14;
+  const width = left + 24 * (cell + gap), height = top + tl.days.length * (cell + gap) + 2;
+  const root = svg("svg", { viewBox: "0 0 " + width + " " + height, role: "img",
+                            "aria-label": "Hours online over the last 7 days" });
+  for (const h of [0, 6, 12, 18]) {
+    root.append(svg("text", { x: left + h * (cell + gap), y: 9, class: "tl-day" }, String(h).padStart(2, "0") + ":00"));
+  }
+  tl.days.forEach((d, row) => {
+    const y = top + row * (cell + gap);
+    root.append(svg("text", { x: 0, y: y + cell - 3, class: "tl-day" }, d.label));
+    d.hours.forEach((v, h) => {
+      const x = left + h * (cell + gap);
+      const future = row === tl.days.length - 1 && h > tl.now_hour;
+      if (future) return;
+      const rect = svg("rect", { x, y, width: cell, height: cell, rx: 3 });
+      let tip;
+      if (v === null) {
+        rect.setAttribute("class", "tl-none");
+        rect.setAttribute("x", x + 0.5); rect.setAttribute("y", y + 0.5);
+        rect.setAttribute("width", cell - 1); rect.setAttribute("height", cell - 1);
+        tip = "no scans";
+      } else if (v === 0) {
+        rect.setAttribute("class", "tl-off");
+        tip = "offline";
+      } else {
+        rect.setAttribute("class", "tl-on");
+        rect.setAttribute("fill-opacity", (0.35 + 0.65 * v).toFixed(2));
+        tip = v === 1 ? "online" : "online " + Math.round(v * 100) + "% of scans";
+      }
+      rect.append(svg("title", {}, d.label + " " + String(h).padStart(2, "0") + ":00 · " + tip));
+      root.append(rect);
+    });
+  });
+  return root;
+}
+
+window.loadTimeline = async (d) => {
+  const wrap = $("timeline-wrap"), box = $("timeline");
+  box.replaceChildren();
+  wrap.hidden = true;
+  try {
+    const tl = await api("/api/devices/" + d.mac + "/timeline");
+    if (state.open !== d.mac || !tl.scans) return;
+    const key = (cls, text) => el("span", { class: "tl-item" }, el("span", { class: "tl-key " + cls }), text);
+    const legend = el("p", { class: "tl-sum" },
+      el("span", { class: "tl-pct", text: tl.online_pct === null ? "" : "Online in " + tl.online_pct + "% of scans this week." }),
+      key("on", "online"), key("off", "offline"), key("none", "no scan"));
+    box.replaceChildren(drawTimeline(tl), legend);
+    wrap.hidden = false;
+  } catch (e) { /* the sheet still works without it */ }
+};
+
 // ---------- wiring
 function setFilter(filter) {
   state.filter = filter;

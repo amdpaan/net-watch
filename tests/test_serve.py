@@ -188,3 +188,20 @@ def test_worker_one_scan_at_a_time():
     w.lock.acquire()
     assert w.run_once() is None and not w.start()
     w.lock.release()
+
+
+def test_summary_endpoint(local):
+    status, data, _ = request(local, "GET", "/api/summary")
+    assert status == 200
+    assert {k: data[k] for k in ("online", "known", "unknown")} == {"online": 2, "known": 0, "unknown": 2}
+    assert "generated_at" in data and "on_home_network" in data
+
+
+def test_timeline_endpoint(local):
+    status, data, _ = request(local, "GET", "/api/devices/%s/timeline" % TV)
+    assert status == 200 and len(data["days"]) == 7
+    assert request(local, "GET", "/api/devices/00:00:5e:00:53:77/timeline")[0] == 404
+
+
+def test_summary_needs_token_from_lan(lan):
+    assert request(lan, "GET", "/api/summary")[0] == 401

@@ -1,11 +1,12 @@
 """One scan: safety lock → discover → identify → store."""
 
 import ipaddress
+import json
 import time
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from . import db, discover, home, names, netinfo, oui
+from . import db, discover, home, names, netinfo, oui, paths
 
 
 class ScanRefused(Exception):
@@ -98,4 +99,13 @@ def scan_and_store(info, use_nmap=False, con=None, log=print, **kw):
     result.new = db.record_scan(con, result, {d.mac: oui.vendor(d.mac) for d in result.devices},
                                 duration=result.duration)
     db.prune(con)
+    write_summary(con, on_home_network=True)
     return result
+
+
+def write_summary(con, on_home_network):
+    """summary.json in the data folder (same as /api/summary), for desktop widgets that read files."""
+    path = paths.support() / "summary.json"
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(db.summary(con, on_home_network)) + "\n")
+    tmp.replace(path)

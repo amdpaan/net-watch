@@ -30,7 +30,7 @@ STATIC = {
     "/style.css": ("style.css", "text/css; charset=utf-8"),
     "/icon.svg": ("icon.svg", "image/svg+xml"),
 }
-DEVICE_PATH = re.compile(r"^/api/devices/([0-9a-f]{2}(?::[0-9a-f]{2}){5})(/forget)?$")
+DEVICE_PATH = re.compile(r"^/api/devices/([0-9a-f]{2}(?::[0-9a-f]{2}){5})(/forget|/timeline)?$")
 COOKIE = "netwatch_token"
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
 MAX_BODY = 10_000
@@ -63,6 +63,7 @@ class Worker:
             verdict, message = home.check(info)
             if verdict != home.HOME:
                 self.status = {"state": verdict, "message": message, "ts": int(time.time())}
+                scanner.write_summary(db.connect(), on_home_network=False)
                 return None
             result = self.scan(info, log=lambda *_: None)
             self.status = {"state": "ok", "ts": int(time.time()),
@@ -139,6 +140,12 @@ class App:
             "status": dict(self.worker.status, scanning=self.worker.scanning),
             "types": db.TYPES,
         }
+
+
+    def summary(self):
+        state = self.worker.status["state"]
+        on_home = True if state == "ok" else False if state in (home.AWAY, home.NOT_SET, home.REFUSED) else None
+        return db.summary(db.connect(), on_home)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -232,7 +239,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, (WEB / name).read_bytes(), ctype)
         if url.path == "/api/devices":
             return self.json(self.app.snapshot())
+        if url.path == "/api/summary":
+            return self.json(self.app.summary())
         m = DEVICE_PATH.match(url.path)
+        if m and m.group(2) == "/timeline":
+            con = db.connect()
+            if not db.get(con, m.group(1)):
+                return self.error(404, "No such device")
+            return self.json(db.timeline(con, m.group(1)))
         if m and not m.group(2):
             row = next((d for d in db.devices(db.connect()) if d["mac"] == m.group(1)), None)
             if not row:
@@ -257,6 +271,8 @@ class Handler(BaseHTTPRequestHandler):
             db.set_meta(db.connect(), "dismissed_before", int(time.time()) + 1)
             return self.json({"ok": True})
         m = DEVICE_PATH.match(url.path)
+        if m and m.group(2) == "/timeline":
+            return self.error(405, "Use GET")
         if m and m.group(2):
             if not db.forget(db.connect(), m.group(1)):
                 return self.error(404, "No such device")
