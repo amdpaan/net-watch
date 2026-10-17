@@ -1,0 +1,21 @@
+# Personal data: real MAC addresses, labels and scan history. Normally lives in
+# ~/Library/Application Support/net-watch, ignored here too in case NETWATCH_HOME points inside the repo.
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+config.json
+manuf
+oui*.txt
+oui*.csv
+logs/
+# Raw command captures from your own network (arp, ifconfig, ...). Tests use fake fixtures only.
+*.local.txt
+captures/
+
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+build/
+.DS_Store

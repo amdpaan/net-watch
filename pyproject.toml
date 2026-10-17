@@ -1,0 +1,12 @@
+# No runtime dependencies: net-watch runs on macOS's /usr/bin/python3 (3.9) with the standard library.
+# pytest is dev-only:  uvx --python /usr/bin/python3 pytest
+[project]
+name = "net-watch"
+version = "0.1.0"
+description = "Home network device dashboard for macOS"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [".", "tests"]

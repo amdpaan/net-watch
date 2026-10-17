@@ -1,0 +1,4 @@
+#!/bin/sh
+# CLI entry point. Works when symlinked (install.sh links it into ~/.local/bin).
+REPO="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+PYTHONPATH="$REPO${PYTHONPATH:+:$PYTHONPATH}" exec /usr/bin/python3 -m netwatch "$@"

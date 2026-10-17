@@ -1,0 +1,30 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python version
+        run: /usr/bin/python3 --version
+
+      - name: Tests
+        # System Python, the same one bin/netwatch and the launchd agent use. pytest is the only (dev) dependency.
+        run: |
+          /usr/bin/python3 -m pip install --user --quiet pytest
+          /usr/bin/python3 -m pytest -v
+
+      - name: Scripts parse and the CLI starts
+        run: |
+          for f in bin/netwatch; do sh -n "$f"; done
+          bin/netwatch --version

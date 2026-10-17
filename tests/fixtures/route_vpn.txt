@@ -1,0 +1,6 @@
+   route to: default
+destination: default
+       mask: default
+    gateway: link#24
+  interface: utun4
+      flags: <UP,DONE,CLONING,STATIC,GLOBAL>
