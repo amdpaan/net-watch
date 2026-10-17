@@ -30,7 +30,7 @@ function el(tag, props, ...children) {
 }
 
 function icon(type, big) {
-  const span = el("span", { class: "dev-icon" + (big ? " big" : ""), "aria-hidden": "true" });
+  const span = el("span", { class: "dev-icon t-" + (ICONS[type] ? type : "other") + (big ? " big" : ""), "aria-hidden": "true" });
   span.innerHTML = ICONS[type] || ICONS.other; // constant markup above, never data
   return span;
 }
@@ -62,6 +62,60 @@ async function api(path, body) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
+}
+
+// ---------- Pip the owl: net-watch's own pixel mascot (16×22 grid). Letters are colours (see style.css .owl-*).
+// The base is always drawn; each layer only draws the cells that differ from it, and CSS shows the layer
+// that matches what net-watch is doing.
+const OWL = [
+  "................", "................", "................", "................", "................", "................",
+  "..o..........o..",
+  "..oo........oo..",
+  "..obooooooooob..",
+  ".obbbbbbbbbbbbo.",
+  ".obeeeebbeeeebo.",
+  "obbeppebbeppebbo",
+  "obbeppebbeppebbo",
+  "obbeeeeaaeeeebbo",
+  "odbbbbbaabbbbbdo",
+  "odbbwwwwwwwwbbdo",
+  "odbwwvwwvwwvwbdo",
+  "odbwwwwwwwwwwbdo",
+  ".odwvwwvwwvwwdo.",
+  ".odbwwwwwwwwbdo.",
+  "..oobbbbbbbboo..",
+  "....aa....aa....",
+];
+const OWL_LAYERS = {
+  "closed": { 10: ".obbbbbbbbbbbbo.", 11: "obbbbbbbbbbbbbbo", 12: "obboooobboooobbo", 13: "obbbbbbaabbbbbbo" },
+  "arcs arc3": { 0: "....oooooooo....", 1: "..oo........oo.." },
+  "arcs arc2": { 2: ".....oooooo.....", 3: "....o......o...." },
+  "arcs arc1": { 4: ".......oo......." },
+  "zz": { 0: "..........ooo...", 1: "............o...", 2: "...........o....", 3: "..........o.....", 4: "..........ooo..." },
+  "bang": { 0: ".......oo.......", 1: ".......oo.......", 2: ".......oo.......", 4: ".......oo......." },
+};
+
+function owlRects(rows, onlyChanged) {
+  let out = "";
+  for (const [y, row] of Object.entries(rows)) {
+    [...row].forEach((c, x) => {
+      if (c === "." || (onlyChanged && OWL[y][x] === c)) return;
+      out += '<rect class="owl-' + c + '" x="' + x + '" y="' + y + '" width="1.02" height="1.02"/>';
+    });
+  }
+  return out;
+}
+
+function drawOwl() {
+  let svg = '<svg viewBox="0 0 16 22" shape-rendering="crispEdges" aria-hidden="true">' + owlRects(OWL, false);
+  for (const [cls, rows] of Object.entries(OWL_LAYERS)) svg += '<g class="layer ' + cls + '">' + owlRects(rows, true) + "</g>";
+  $("mascot").innerHTML = svg + "</svg>"; // built from the constant map above, never from data
+}
+
+function setOwl(mood) {
+  $("mascot").className = "mascot owl-" + mood;
+  const words = { idle: "keeping watch", scan: "scanning", alert: "spotted a new device", away: "asleep: you're away" };
+  $("mascot").setAttribute("aria-label", "Pip the owl, " + words[mood]);
 }
 
 // ---------- theme
@@ -143,25 +197,43 @@ function renderTable() {
 }
 
 function renderStatus() {
-  const { status, last_scan: scan, now, home_subnet: subnet } = state.data;
-  const parts = [];
-  if (subnet) parts.push(subnet);
-  if (status.scanning) parts.push("scanning…");
-  else if (scan) parts.push("last scan " + (now - scan.ts < 60 ? "just now" : ago(now - scan.ts) + " ago"));
-  $("subtitle").textContent = parts.join(" · ") || "No home network saved yet";
+  const { status, last_scan: scan, now, home_subnet: subnet, counts, new: fresh } = state.data;
+  const since = scan ? (now - scan.ts < 60 ? "just now" : ago(now - scan.ts) + " ago") : null;
+  let mood = "idle", headline, sub;
+  if (status.scanning) {
+    mood = "scan"; headline = "Taking a look around…"; sub = "Checking every address on your home network.";
+  } else if (status.state === "away") {
+    mood = "away"; headline = "You're away from home";
+    sub = "Not scanning here. Showing what was saved at home" + (since ? ", last scan " + since : "") + ".";
+  } else if (status.state === "not_set") {
+    mood = "away"; headline = "No home network yet"; sub = "Confirm your home Wi-Fi to start watching.";
+  } else if (["permission", "error", "offline", "refused"].includes(status.state)) {
+    headline = "Something needs a look"; sub = since ? "Last good scan " + since + "." : "No scan yet.";
+  } else if (fresh.length) {
+    mood = "alert";
+    headline = fresh.length === 1 ? "A new device joined" : fresh.length + " new devices joined";
+    sub = counts.online + " online now" + (since ? " · last scan " + since : "");
+  } else {
+    headline = counts.unknown ? "All quiet, " + counts.unknown + " still unnamed" : "All quiet at home";
+    sub = counts.online + " device" + (counts.online === 1 ? "" : "s") + " online" + (since ? " · last scan " + since : "");
+  }
+  setOwl(mood);
+  $("headline").textContent = headline;
+  $("subtitle").textContent = sub;
+  $("eyebrow").textContent = subnet ? "net-watch · " + subnet : "net-watch";
 
   const btn = $("scan-btn");
   btn.disabled = status.scanning;
   btn.textContent = status.scanning ? "Scanning…" : "Scan now";
 
+  // Details the headline can't carry (what to do next) go in the notice below it
   const notice = $("status-notice");
-  const show = ["away", "not_set", "refused", "offline", "permission", "error"].includes(status.state);
+  const show = ["not_set", "refused", "offline", "permission", "error"].includes(status.state);
   notice.hidden = !show;
   if (show) {
-    let msg = status.message;
-    if (status.state === "not_set") msg = "No home network saved yet. Run `netwatch home` in Terminal at home to confirm it.";
-    if (status.state === "away") msg = status.message + " Showing what was saved at home.";
-    notice.textContent = msg;
+    notice.textContent = status.state === "not_set"
+      ? "Run `netwatch home` in Terminal while you're on your home Wi-Fi."
+      : status.message;
     notice.className = "notice" + (["permission", "error"].includes(status.state) ? " warn" : "");
   }
 }
@@ -171,7 +243,7 @@ function renderBanner() {
   const banner = $("banner");
   banner.hidden = items.length === 0;
   if (!items.length) return;
-  $("banner-title").textContent = items.length === 1 ? "A new device joined your network" : items.length + " new devices joined your network";
+  $("banner-title").textContent = items.length === 1 ? "Do you recognise it?" : "Do you recognise them?";
   $("banner-list").replaceChildren(...items.slice(0, 5).map((d) => el("li", {},
     el("button", { type: "button", text: d.name, onclick: () => openSheet(d.mac) }),
     el("span", { class: "meta", text: "  " + [d.ip, d.vendor, ago(state.data.now - d.first_seen) + " ago"].filter(Boolean).join(" · ") }),
@@ -410,6 +482,7 @@ function setFilter(filter) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  drawOwl();
   applyTheme(storedTheme());
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => applyTheme(storedTheme()));
   $("theme-btn").addEventListener("click", toggleTheme);

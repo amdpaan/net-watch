@@ -109,10 +109,15 @@ netwatch home --forget   # forget it (nothing gets scanned until you confirm aga
 
 ## The dashboard
 
+At the top sits **Pip**, net-watch's pixel owl. Pip blinks while keeping watch, shows Wi-Fi waves while
+scanning, raises a "!" when a new device joins, and dozes off when you're away from home. The headline next
+to Pip says the same thing in words.
+
 `netwatch serve` shows cards (online now, known = labeled by you, unknown = not labeled yet), a banner for
 devices that joined in the last 24 hours, and a sortable, searchable device table. Click a device to name
 it and pick its type (phone, laptop, TV, router, other). Light and dark mode follow your Mac (the button
-switches), and the layout works at phone width.
+switches), and the layout works at phone width. Each device type has its own colour. The page uses the
+Mac's built-in fonts (New York and San Francisco), so nothing is downloaded and it works offline.
 
 **Who can see it?** By default the server listens on `127.0.0.1` only, and requests must use a localhost
 `Host` header, so a website you visit can't reach it through DNS rebinding. With `--lan` other devices on
@@ -157,4 +162,5 @@ addresses) and the example subnet `192.168.50.0/24`.
 
 ## License
 
-MIT
+MIT. Pip and the dashboard design are original to this project. net-watch isn't affiliated with or
+endorsed by any company whose products it may detect on your network.
