@@ -8,9 +8,9 @@ device it finds, remembers them, lets you label them and alerts you when an unkn
 Everything runs locally on your Mac. It's free and open source, with no cloud, accounts or paid APIs, and it
 uses only the Python that ships with macOS (`/usr/bin/python3`, standard library only).
 
-> **Status:** M1–M3 work: network detection, the safety lock, scanning, the device database, vendors,
-> new-device detection and the web dashboard with labeling. Alerts, background scanning and the timeline
-> are coming next.
+> **Status:** M1–M4 work: network detection, the safety lock, scanning, the device database, vendors,
+> the web dashboard with labeling, new-device notifications, background scanning and the login agent.
+> The `/api/summary` endpoint and the 7-day timeline are coming next.
 
 ## Screenshots
 
@@ -38,6 +38,12 @@ _Coming with the dashboard (M3). Screenshots will use made-up devices and fake M
    The **first scan is a baseline**: whatever is on your network then counts as already seen, so you don't
    get a burst of alerts. After that, any MAC never seen before is a new device.
 
+7. **Alerts.** When a never-seen MAC shows up, you get a macOS notification (clickable with
+   `terminal-notifier`, otherwise through `osascript`). Each device alerts at most once. More than three at
+   once become a single summary notification. Phones can rotate their private MAC, so if a new private
+   address has the same hostname as a device you've labeled, the alert says "Possibly <that device> with a
+   new private address" instead.
+
 ## Setup
 
 Requirements: macOS (Apple Silicon or Intel) and the built-in `/usr/bin/python3`. Nothing to install.
@@ -50,6 +56,18 @@ netwatch home    # at home: confirm this network as home (saves the router's MAC
 netwatch scan    # scan once and print a table
 ```
 
+### Start at login (optional)
+
+```sh
+./install.sh --agent               # launchd agent: `netwatch serve` at login, scanning every 5 min
+./install.sh --agent --interval 10
+./uninstall.sh                     # remove the agent and the command (add --purge to delete your data too)
+```
+
+The agent only listens on `127.0.0.1` (never `--lan`) and logs to
+`~/Library/Application Support/net-watch/logs/serve.log`. Off your home network every scan is skipped, and
+scanning resumes on its own when you get home.
+
 ### Local Network permission
 
 macOS asks before an app talks to devices on your network. If the first scan says the pings were blocked,
@@ -61,12 +79,13 @@ open **System Settings → Privacy & Security → Local Network** and turn on th
 ```sh
 netwatch scan            # one scan, prints a table (asks to confirm home on first run)
 netwatch scan --nmap     # also run nmap -sn if installed
+netwatch scan --no-notify
 netwatch devices         # everything seen so far: online / offline for X, first seen
 netwatch devices --online
 netwatch label <mac> "Living room TV" --type tv   # types: phone, laptop, tv, router, other
 netwatch forget <mac>    # delete a device and its history (it'll count as new if it returns)
 netwatch update-oui      # refresh the vendor list
-netwatch serve           # dashboard at http://127.0.0.1:8765 (scans once at start; "Scan now" button)
+netwatch serve           # dashboard at http://127.0.0.1:8765 + a scan every 5 min (--interval N)
 netwatch serve --lan     # also open it from your phone on the same Wi-Fi (prints a link with a token)
 netwatch demo            # the dashboard with made-up devices, on port 8766 (never scans)
 netwatch home            # show the saved home network

@@ -86,6 +86,19 @@ class Worker:
         threading.Thread(target=self.run_once, daemon=True).start()
         return True
 
+    def loop(self, minutes, stop=None, log=print):
+        """Scan now and then every `minutes` until `stop` is set. Off the home network each attempt is a
+        cheap no-op (detect + lock check), so it simply resumes when you get home."""
+        stop = stop or threading.Event()
+        last_state = None
+        while not stop.is_set():
+            self.run_once()
+            state = self.status["state"]
+            if state == "ok" or state != last_state:  # don't repeat "not home" every 5 minutes
+                log("%s  %s" % (time.strftime("%Y-%m-%d %H:%M"), self.status["message"]))
+            last_state = state
+            stop.wait(max(1, minutes) * 60)
+
 
 def device_json(d, now):
     return {

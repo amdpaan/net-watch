@@ -2,9 +2,10 @@
 
 import argparse
 import sys
+import threading
 import time
 
-from . import __version__, db, home, identify, netinfo, oui, scanner, serve
+from . import __version__, db, home, identify, netinfo, notify, oui, scanner, serve
 
 
 def table(rows, headers):
@@ -77,6 +78,8 @@ def cmd_scan(args):
         print("First scan: these devices are saved as the baseline (no alerts for them).")
     elif result.new:
         print("%d new device%s." % (len(result.new), "" if len(result.new) == 1 else "s"))
+        if not args.no_notify:
+            notify.alert_new(con, result.new)
     return 0
 
 
@@ -137,7 +140,9 @@ def cmd_serve(args):
     except netinfo.NoNetwork:
         pass
     token = serve.lan_token(rotate=args.new_token) if args.lan else None
-    app = serve.App(lan=args.lan, token=token, verbose=args.verbose)
+    url = "http://127.0.0.1:%d/" % args.port
+    worker = serve.Worker(on_result=lambda r: notify.alert_new(db.connect(), r.new, url))
+    app = serve.App(lan=args.lan, token=token, worker=worker, verbose=args.verbose)
     try:
         server = serve.make_server(app, "0.0.0.0" if args.lan else "127.0.0.1", args.port)
     except OSError as e:
@@ -147,8 +152,9 @@ def cmd_serve(args):
         host = serve.local_hostname()
         print("On your phone (same Wi-Fi): http://%s:%d/?t=%s" % (host or "<this-mac-ip>", args.port, token))
         print("Anyone with that link can see and edit your devices. Rotate it with --new-token.")
-    print("Ctrl-C to stop.", flush=True)
-    app.worker.start()
+    print("Scanning every %d min while on the home network. Ctrl-C to stop." % args.interval, flush=True)
+    threading.Thread(target=worker.loop, args=(args.interval,), kwargs={"log": lambda m: print(m, flush=True)},
+                     daemon=True).start()
     try:
         server.serve_forever()
     finally:
@@ -206,10 +212,12 @@ def build_parser():
 
     s = sub.add_parser("scan", help="scan the home network once and print the devices")
     s.add_argument("--nmap", action="store_true", help="also run an unprivileged `nmap -sn` (if installed)")
+    s.add_argument("--no-notify", action="store_true", help="don't send notifications for new devices")
     s.set_defaults(func=cmd_scan)
 
     s = sub.add_parser("serve", help="web dashboard (http://127.0.0.1:8765)")
     s.add_argument("--port", type=int, default=8765)
+    s.add_argument("--interval", type=int, default=5, metavar="MIN", help="minutes between scans (default 5)")
     s.add_argument("--lan", action="store_true", help="also reachable from your phone on the same Wi-Fi (token)")
     s.add_argument("--new-token", action="store_true", help="with --lan: make a new access token")
     s.add_argument("-v", "--verbose", action="store_true", help="log every request")

@@ -26,5 +26,5 @@ jobs:
 
       - name: Scripts parse and the CLI starts
         run: |
-          for f in bin/netwatch; do sh -n "$f"; done
+          for f in bin/netwatch install.sh uninstall.sh; do sh -n "$f"; done
           bin/netwatch --version
