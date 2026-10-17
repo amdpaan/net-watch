@@ -4,7 +4,7 @@ import argparse
 import sys
 import time
 
-from . import __version__, db, home, identify, netinfo, oui, scanner
+from . import __version__, db, home, identify, netinfo, oui, scanner, serve
 
 
 def table(rows, headers):
@@ -128,6 +128,53 @@ def cmd_update_oui(args):
     return 0
 
 
+def cmd_serve(args):
+    # The dashboard works anywhere (it shows what's stored); scans only run on the home network.
+    try:
+        info = netinfo.detect()
+        if home.check(info)[0] == home.NOT_SET and sys.stdin.isatty():
+            home.confirm(info)
+    except netinfo.NoNetwork:
+        pass
+    token = serve.lan_token(rotate=args.new_token) if args.lan else None
+    app = serve.App(lan=args.lan, token=token, verbose=args.verbose)
+    try:
+        server = serve.make_server(app, "0.0.0.0" if args.lan else "127.0.0.1", args.port)
+    except OSError as e:
+        sys.exit("net-watch: can't listen on port %d (%s). Try --port." % (args.port, e.strerror or e))
+    print("net-watch dashboard: http://127.0.0.1:%d/" % args.port)
+    if args.lan:
+        host = serve.local_hostname()
+        print("On your phone (same Wi-Fi): http://%s:%d/?t=%s" % (host or "<this-mac-ip>", args.port, token))
+        print("Anyone with that link can see and edit your devices. Rotate it with --new-token.")
+    print("Ctrl-C to stop.", flush=True)
+    app.worker.start()
+    try:
+        server.serve_forever()
+    finally:
+        server.server_close()
+    return 0
+
+
+def cmd_demo(args):
+    import os
+    from . import demo
+    folder = demo.demo_home()
+    os.environ["NETWATCH_HOME"] = str(folder)
+    demo.build()
+    print("Demo data written to %s" % folder)
+    if args.no_serve:
+        return 0
+    app = serve.App(worker=demo.DemoWorker())
+    server = serve.make_server(app, "127.0.0.1", args.port)
+    print("Demo dashboard: http://127.0.0.1:%d/  (Ctrl-C to stop)" % args.port, flush=True)
+    try:
+        server.serve_forever()
+    finally:
+        server.server_close()
+    return 0
+
+
 def cmd_home(args):
     info = detect_or_exit()
     cfg = home.load_config()
@@ -161,6 +208,13 @@ def build_parser():
     s.add_argument("--nmap", action="store_true", help="also run an unprivileged `nmap -sn` (if installed)")
     s.set_defaults(func=cmd_scan)
 
+    s = sub.add_parser("serve", help="web dashboard (http://127.0.0.1:8765)")
+    s.add_argument("--port", type=int, default=8765)
+    s.add_argument("--lan", action="store_true", help="also reachable from your phone on the same Wi-Fi (token)")
+    s.add_argument("--new-token", action="store_true", help="with --lan: make a new access token")
+    s.add_argument("-v", "--verbose", action="store_true", help="log every request")
+    s.set_defaults(func=cmd_serve)
+
     s = sub.add_parser("devices", help="list every device seen so far")
     s.add_argument("--online", action="store_true", help="only devices seen in the last scan")
     s.set_defaults(func=cmd_devices)
@@ -180,6 +234,11 @@ def build_parser():
     g.add_argument("--reset", action="store_true", help="save the current network as home (e.g. new router)")
     g.add_argument("--forget", action="store_true", help="forget the saved home network")
     s.set_defaults(func=cmd_home)
+
+    s = sub.add_parser("demo", help="dashboard with made-up devices (never scans)")
+    s.add_argument("--port", type=int, default=8766)
+    s.add_argument("--no-serve", action="store_true", help="only write the demo data")
+    s.set_defaults(func=cmd_demo)
 
     s = sub.add_parser("update-oui", help="re-download the MAC vendor list")
     s.set_defaults(func=cmd_update_oui)

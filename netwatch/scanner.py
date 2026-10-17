@@ -94,7 +94,7 @@ def scan_and_store(info, use_nmap=False, con=None, log=print, **kw):
     result = scan(info, use_nmap=use_nmap, **kw)
     result.duration = time.time() - started
     con = con or db.connect()
-    result.baseline = db.is_first_scan(con)
+    result.baseline = db.get_meta(con, "baseline_ts") is None
     result.new = db.record_scan(con, result, {d.mac: oui.vendor(d.mac) for d in result.devices},
                                 duration=result.duration)
     db.prune(con)

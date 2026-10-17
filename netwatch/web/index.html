@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>net-watch</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <img src="/icon.svg" alt="" width="28" height="28">
+    <div>
+      <h1>net-watch</h1>
+      <p class="sub" id="subtitle">Loading…</p>
+    </div>
+  </div>
+  <div class="actions">
+    <button class="btn" id="scan-btn" type="button">Scan now</button>
+    <button class="icon-btn" id="theme-btn" type="button" aria-label="Switch light/dark mode" title="Light/dark"></button>
+  </div>
+</header>
+
+<main>
+  <div class="notice" id="status-notice" hidden></div>
+
+  <section class="banner" id="banner" hidden aria-live="polite">
+    <div>
+      <strong id="banner-title"></strong>
+      <ul id="banner-list"></ul>
+    </div>
+    <button class="btn ghost" id="dismiss-btn" type="button">Dismiss</button>
+  </section>
+
+  <section class="cards" aria-label="Summary">
+    <button class="card" data-filter="online" type="button"><span class="num" id="c-online">–</span><span class="lbl">Online now</span></button>
+    <button class="card" data-filter="known" type="button"><span class="num" id="c-known">–</span><span class="lbl">Known devices</span></button>
+    <button class="card warn" data-filter="unknown" type="button"><span class="num" id="c-unknown">–</span><span class="lbl">Unknown devices</span></button>
+  </section>
+
+  <section class="panel">
+    <div class="toolbar">
+      <div class="chips" role="tablist" aria-label="Filter">
+        <button class="chip on" data-filter="all" type="button">All</button>
+        <button class="chip" data-filter="online" type="button">Online</button>
+        <button class="chip" data-filter="unknown" type="button">Unknown</button>
+      </div>
+      <input type="search" id="search" placeholder="Search name, IP, vendor, MAC" aria-label="Search devices">
+    </div>
+    <table class="devices">
+      <thead>
+        <tr>
+          <th class="c-icon"><span class="sr">Type</span></th>
+          <th data-sort="name">Name</th>
+          <th data-sort="ip">IP</th>
+          <th data-sort="vendor">Vendor</th>
+          <th data-sort="status">Status</th>
+          <th data-sort="first_seen">First seen</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <p class="empty" id="empty" hidden></p>
+  </section>
+</main>
+
+<dialog id="sheet" aria-labelledby="sheet-title">
+  <form method="dialog" id="sheet-form">
+    <header class="sheet-head">
+      <span class="dev-icon big" id="sheet-icon"></span>
+      <div>
+        <h2 id="sheet-title"></h2>
+        <p class="sub" id="sheet-sub"></p>
+      </div>
+      <button class="icon-btn" type="button" data-close aria-label="Close">✕</button>
+    </header>
+
+    <label class="field">
+      <span>Name</span>
+      <input id="f-label" maxlength="60" placeholder="e.g. Living room TV" autocomplete="off">
+    </label>
+
+    <fieldset class="field">
+      <legend>Type</legend>
+      <div class="types" id="f-types"></div>
+    </fieldset>
+
+    <div class="timeline-wrap" id="timeline-wrap" hidden>
+      <h3>Online over the last 7 days</h3>
+      <div id="timeline"></div>
+    </div>
+
+    <dl class="facts" id="facts"></dl>
+
+    <footer class="sheet-foot">
+      <button class="btn danger ghost" id="forget-btn" type="button">Forget device</button>
+      <span class="spacer"></span>
+      <button class="btn ghost" type="button" data-close>Cancel</button>
+      <button class="btn" id="save-btn" value="save">Save</button>
+    </footer>
+  </form>
+</dialog>
+</body>
+</html>

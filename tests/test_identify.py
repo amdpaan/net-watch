@@ -4,7 +4,7 @@ from netwatch import identify
 
 
 @pytest.mark.parametrize("device, type_", [
-    ({"hostname": "Paans-iPhone"}, "phone"),
+    ({"hostname": "Sams-iPhone"}, "phone"),
     ({"hostname": "Galaxy-S24"}, "phone"),
     ({"hostname": "living-room-tv"}, "tv"),
     ({"vendor": "Roku"}, "tv"),
@@ -13,7 +13,7 @@ from netwatch import identify
     ({"is_gateway": True, "vendor": "Fruitco"}, "router"),
     ({"is_self": True}, "laptop"),
     ({"vendor": "Fruitco"}, "other"),
-    ({"type": "tv", "hostname": "Paans-iPhone"}, "tv"),  # yours wins
+    ({"type": "tv", "hostname": "Sams-iPhone"}, "tv"),  # yours wins
 ])
 def test_guess_type(device, type_):
     assert identify.guess_type(device) == type_
@@ -27,7 +27,7 @@ def test_display_name_order():
     d["label"] = "TV"
     assert identify.display_name(d) == "TV"
     assert identify.display_name({"vendor": None}) == "Unknown device"
-    assert identify.display_name({"vendor": "Private MAC", "is_random_mac": 1}) == "Private MAC"
+    assert identify.display_name({"vendor": "Private MAC", "is_random_mac": 1}) == "Unknown device"
 
 
 def test_vendor_label():

@@ -37,7 +37,8 @@ def display_name(device):
         return "This Mac"
     if device.get("is_gateway"):
         return "Router"
-    return device.get("vendor") or "Unknown device"  # vendor is "Private MAC" for randomized addresses
+    vendor = device.get("vendor")
+    return vendor if vendor and vendor != oui.PRIVATE else "Unknown device"
 
 
 def vendor_label(device):

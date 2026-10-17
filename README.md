@@ -8,8 +8,9 @@ device it finds, remembers them, lets you label them and alerts you when an unkn
 Everything runs locally on your Mac. It's free and open source, with no cloud, accounts or paid APIs, and it
 uses only the Python that ships with macOS (`/usr/bin/python3`, standard library only).
 
-> **Status:** M1–M2 work: network detection, the safety lock, scanning, the device database, vendors and
-> new-device detection. The dashboard, alerts and the timeline are coming in the next milestones.
+> **Status:** M1–M3 work: network detection, the safety lock, scanning, the device database, vendors,
+> new-device detection and the web dashboard with labeling. Alerts, background scanning and the timeline
+> are coming next.
 
 ## Screenshots
 
@@ -65,10 +66,25 @@ netwatch devices --online
 netwatch label <mac> "Living room TV" --type tv   # types: phone, laptop, tv, router, other
 netwatch forget <mac>    # delete a device and its history (it'll count as new if it returns)
 netwatch update-oui      # refresh the vendor list
+netwatch serve           # dashboard at http://127.0.0.1:8765 (scans once at start; "Scan now" button)
+netwatch serve --lan     # also open it from your phone on the same Wi-Fi (prints a link with a token)
+netwatch demo            # the dashboard with made-up devices, on port 8766 (never scans)
 netwatch home            # show the saved home network
 netwatch home --reset    # new router? save the current network as home
 netwatch home --forget   # forget it (nothing gets scanned until you confirm again)
 ```
+
+## The dashboard
+
+`netwatch serve` shows cards (online now, known = labeled by you, unknown = not labeled yet), a banner for
+devices that joined in the last 24 hours, and a sortable, searchable device table. Click a device to name
+it and pick its type (phone, laptop, TV, router, other). Light and dark mode follow your Mac (the button
+switches), and the layout works at phone width.
+
+**Who can see it?** By default the server listens on `127.0.0.1` only, and requests must use a localhost
+`Host` header, so a website you visit can't reach it through DNS rebinding. With `--lan` other devices on
+your Wi-Fi can connect, but only with the token in the printed link. The token then moves into a cookie and
+leaves the URL. Without it they can't read anything, let alone edit labels. `--new-token` rotates it.
 
 ## Your data
 

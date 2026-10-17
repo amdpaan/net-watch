@@ -39,6 +39,10 @@ CREATE TABLE IF NOT EXISTS sightings (
     PRIMARY KEY (scan_id, mac)
 );
 CREATE INDEX IF NOT EXISTS sightings_mac_ts ON sightings (mac, ts);
+CREATE TABLE IF NOT EXISTS meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT
+);
 """
 
 
@@ -60,8 +64,10 @@ def record_scan(con, result, vendors, duration=None, now=None):
     scan: that one is the baseline, marked as already alerted)."""
     now = int(now or time.time())
     info = result.info
-    baseline = is_first_scan(con)
+    baseline = is_first_scan(con) and get_meta(con, "baseline_ts") is None
     with con:
+        if baseline:
+            con.execute("INSERT OR REPLACE INTO meta VALUES ('baseline_ts', ?)", (str(now),))
         cur = con.execute(
             "INSERT INTO scans (ts, network, self_mac, gateway_mac, online, duration) VALUES (?,?,?,?,?,?)",
             (now, str(info.network), info.mac, info.gateway_mac, len(result.devices), duration))
@@ -91,6 +97,25 @@ def prune(con, days=KEEP_DAYS, now=None):
     with con:
         con.execute("DELETE FROM sightings WHERE ts < ?", (cutoff,))
         con.execute("DELETE FROM scans WHERE ts < ?", (cutoff,))
+
+
+def get_meta(con, key, default=None):
+    r = con.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+    return r[0] if r else default
+
+
+def set_meta(con, key, value):
+    with con:
+        con.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", (key, str(value)))
+
+
+def recent_new(con, hours=24, now=None):
+    """Devices that joined (after the baseline) in the last `hours` and haven't been labeled or dismissed."""
+    now = int(now or time.time())
+    since = max(now - hours * 3600, int(get_meta(con, "baseline_ts", 0)) + 1,
+                int(get_meta(con, "dismissed_before", 0)))
+    return [dict(r) for r in con.execute(
+        "SELECT * FROM devices WHERE first_seen >= ? AND label IS NULL ORDER BY first_seen DESC", (since,))]
 
 
 def last_scan(con):
