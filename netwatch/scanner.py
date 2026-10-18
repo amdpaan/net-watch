@@ -21,6 +21,20 @@ class PermissionProblem(Exception):
     pass
 
 
+class ScanInterrupted(Exception):
+    """The Mac slept partway through a scan. Its results would show devices as missing, so they're dropped."""
+
+
+# On macOS the wall clock keeps running while the Mac sleeps but time.monotonic() doesn't, so a wall clock
+# that ran ahead of the monotonic one by more than this means the Mac slept in between.
+SLEEP_DRIFT = 20
+
+
+def slept_since(wall0, mono0, wall=time.time, mono=time.monotonic):
+    """True if the Mac slept since the two readings (wall0, mono0) were taken."""
+    return (wall() - wall0) - (mono() - mono0) > SLEEP_DRIFT
+
+
 @dataclass
 class Device:
     ip: str
@@ -87,13 +101,17 @@ def ensure_vendor_db(log=print):
         log("  Couldn't download it (%s). Vendors stay unknown; retry with `netwatch update-oui`." % e)
 
 
-def scan_and_store(info, use_nmap=False, con=None, log=print, **kw):
-    """Scan, look up vendors, save to the database. Returns the ScanResult with `new` filled in."""
+def scan_and_store(info, use_nmap=False, con=None, log=print, clocks=(time.time, time.monotonic), **kw):
+    """Scan, look up vendors, save to the database. Returns the ScanResult with `new` filled in.
+    Raises ScanInterrupted (and stores nothing) if the Mac slept during the scan."""
     check_lock(info)
-    started = time.time()
+    wall, mono = clocks
+    wall0, mono0 = wall(), mono()
     ensure_vendor_db(log)
     result = scan(info, use_nmap=use_nmap, **kw)
-    result.duration = time.time() - started
+    if slept_since(wall0, mono0, wall, mono):
+        raise ScanInterrupted("The Mac slept during the scan, so its results were dropped.")
+    result.duration = mono() - mono0
     con = con or db.connect()
     result.baseline = db.get_meta(con, "baseline_ts") is None
     result.new = db.record_scan(con, result, {d.mac: oui.vendor(d.mac) for d in result.devices},

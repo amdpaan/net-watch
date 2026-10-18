@@ -42,11 +42,18 @@ HEADERS = {
 }
 
 
+NAP_STEP = 15        # seconds between "did the Mac just wake?" checks while waiting
+WAKE_GRACE = 20      # after waking, let Wi-Fi reconnect before scanning
+RETRY_SECONDS = 30   # after a scan the Mac slept through
+
+
 class Worker:
     """Runs scans one at a time (never two at once) and remembers how the last attempt went."""
 
-    def __init__(self, detect=netinfo.detect, scan=scanner.scan_and_store, on_result=None):
+    def __init__(self, detect=netinfo.detect, scan=scanner.scan_and_store, on_result=None,
+                 wall=time.time, mono=time.monotonic):
         self.detect, self.scan, self.on_result = detect, scan, on_result
+        self.wall, self.mono = wall, mono
         self.lock = threading.Lock()
         self.status = {"state": "idle", "message": "No scan yet.", "ts": None}
 
@@ -66,8 +73,9 @@ class Worker:
                 scanner.write_summary(db.connect(), on_home_network=False)
                 return None
             result = self.scan(info, log=lambda *_: None)
+            n = len(result.devices)
             self.status = {"state": "ok", "ts": int(time.time()),
-                           "message": "%d devices online." % len(result.devices)}
+                           "message": "%d device%s online." % (n, "" if n == 1 else "s")}
             if self.on_result:
                 self.on_result(result)
             return result
@@ -75,6 +83,8 @@ class Worker:
             self.status = {"state": "offline", "message": str(e), "ts": int(time.time())}
         except scanner.PermissionProblem as e:
             self.status = {"state": "permission", "message": str(e), "ts": int(time.time())}
+        except scanner.ScanInterrupted as e:
+            self.status = {"state": "interrupted", "message": str(e), "ts": int(time.time())}
         except Exception as e:  # keep serving; show what went wrong
             self.status = {"state": "error", "message": "Scan failed: %s" % e, "ts": int(time.time())}
         finally:
@@ -98,7 +108,22 @@ class Worker:
             if state == "ok" or state != last_state:  # don't repeat "not home" every 5 minutes
                 log("%s  %s" % (time.strftime("%Y-%m-%d %H:%M"), self.status["message"]))
             last_state = state
-            stop.wait(max(1, minutes) * 60)
+            self.nap(RETRY_SECONDS if state == "interrupted" else max(1, minutes) * 60, stop)
+
+    def nap(self, seconds, stop):
+        """Wait between scans. Python's waits don't count time asleep, so a plain wait would scan up to
+        `seconds` after the Mac wakes. Waiting in short steps notices the wake instead: give Wi-Fi a moment to
+        reconnect, then return so the next scan runs right away."""
+        end = self.mono() + seconds
+        while not stop.is_set():
+            left = end - self.mono()
+            if left <= 0:
+                return
+            wall0, mono0 = self.wall(), self.mono()
+            stop.wait(min(NAP_STEP, left))
+            if scanner.slept_since(wall0, mono0, self.wall, self.mono):
+                stop.wait(WAKE_GRACE)
+                return
 
 
 def device_json(d, now):

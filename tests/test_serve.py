@@ -8,7 +8,7 @@ import time
 
 import pytest
 
-from netwatch import db, home, serve
+from netwatch import db, home, scanner, serve
 from netwatch.netinfo import NetInfo
 from netwatch.scanner import Device, ScanResult
 
@@ -232,3 +232,61 @@ def test_add_expected_bad_input(local, body):
 
 def test_add_expected_needs_token_from_lan(lan):
     assert request(lan, "POST", "/api/expected", {"mac": "a2:00:00:00:00:40", "label": "x"})[0] == 401
+
+
+class WaitStub:
+    """Stands in for threading.Event: each wait() advances the fake clocks, optionally sleeping the Mac."""
+
+    def __init__(self, clocks, sleep_on=None, sleep_for=0):
+        self.c, self.sleep_on, self.sleep_for, self.waits = clocks, sleep_on, sleep_for, []
+
+    def is_set(self):
+        return False
+
+    def wait(self, seconds):
+        self.waits.append(seconds)
+        self.c.tick(seconds)
+        if len(self.waits) == self.sleep_on:
+            self.c.sleep(self.sleep_for)
+
+
+def test_nap_waits_the_full_interval_when_awake():
+    from test_scanner import FakeClocks
+    c = FakeClocks()
+    w = serve.Worker(wall=c.wall, mono=c.mono)
+    stub = WaitStub(c)
+    w.nap(300, stub)
+    assert sum(stub.waits) == 300 and max(stub.waits) <= serve.NAP_STEP
+
+
+def test_nap_returns_soon_after_wake():
+    from test_scanner import FakeClocks
+    c = FakeClocks()
+    w = serve.Worker(wall=c.wall, mono=c.mono)
+    stub = WaitStub(c, sleep_on=2, sleep_for=8 * 3600)  # the Mac sleeps overnight during the 2nd step
+    w.nap(300, stub)
+    assert stub.waits == [serve.NAP_STEP, serve.NAP_STEP, serve.WAKE_GRACE]
+
+
+def test_worker_reports_interrupted_scan_and_retries_soon():
+    home.save_home(INFO)
+
+    def sleepy_scan(info, log):
+        raise scanner.ScanInterrupted("The Mac slept during the scan, so its results were dropped.")
+
+    w = serve.Worker(detect=lambda: INFO, scan=sleepy_scan)
+    assert w.run_once() is None and w.status["state"] == "interrupted"
+    naps, logs = [], []
+    w.nap = lambda seconds, stop: (naps.append(seconds), stop.set())
+    w.loop(5, stop=threading.Event(), log=logs.append)
+    assert naps == [serve.RETRY_SECONDS]
+    assert "slept during the scan" in logs[0]
+
+
+@pytest.mark.parametrize("n, text", [(1, "1 device online."), (3, "3 devices online.")])
+def test_status_message_grammar(n, text):
+    home.save_home(INFO)
+    fake = ScanResult(INFO, [Device("192.168.50.%d" % i, "00:00:5e:00:53:%02x" % i) for i in range(1, n + 1)])
+    w = serve.Worker(detect=lambda: INFO, scan=lambda info, log: fake)
+    w.run_once()
+    assert w.status["message"] == text

@@ -99,3 +99,67 @@ def test_scan_writes_summary_json(info, system, monkeypatch, data_home):
     summary = json.loads((data_home / "summary.json").read_text())
     assert summary["online"] == 5 and summary["on_home_network"] is True
     oui._table = None
+
+
+class FakeClocks:
+    """Wall and monotonic clocks; `sleep(n)` advances only the wall clock, like a Mac asleep."""
+
+    def __init__(self):
+        self.w, self.m = 1_000_000.0, 500.0
+
+    def wall(self):
+        return self.w
+
+    def mono(self):
+        return self.m
+
+    def tick(self, n):
+        self.w += n
+        self.m += n
+
+    def sleep(self, n):
+        self.w += n
+
+
+def test_slept_since():
+    c = FakeClocks()
+    w0, m0 = c.w, c.m
+    c.tick(300)
+    assert not scanner.slept_since(w0, m0, c.wall, c.mono)
+    c.sleep(scanner.SLEEP_DRIFT + 1)
+    assert scanner.slept_since(w0, m0, c.wall, c.mono)
+
+
+def test_scan_interrupted_by_sleep_stores_nothing(info, system, monkeypatch):
+    from netwatch import db, oui
+    monkeypatch.setattr(oui, "have_cache", lambda: True)
+    home.save_home(info)
+    c = FakeClocks()
+
+    def sleepy_pinger(ip):
+        if ip == "192.168.50.100":  # the lid closes halfway through the sweep
+            c.sleep(15 * 60)
+        return False, False
+
+    with pytest.raises(scanner.ScanInterrupted):
+        scanner.scan_and_store(info, pinger=sleepy_pinger, runner=system, resolve=no_names,
+                               log=lambda *_: None, clocks=(c.wall, c.mono))
+    con = db.connect()
+    assert db.last_scan(con) is None and db.devices(con) == []
+    oui._table = None
+
+
+def test_scan_duration_counts_awake_time_only(info, system, monkeypatch):
+    from netwatch import oui
+    monkeypatch.setattr(oui, "have_cache", lambda: True)
+    home.save_home(info)
+    c = FakeClocks()
+
+    def pinger(ip):
+        c.tick(0.02)
+        return False, False
+
+    result = scanner.scan_and_store(info, pinger=pinger, runner=system, resolve=no_names,
+                                    log=lambda *_: None, clocks=(c.wall, c.mono))
+    assert 4 < result.duration < 6
+    oui._table = None

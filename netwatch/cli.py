@@ -65,6 +65,9 @@ def cmd_scan(args):
     except scanner.PermissionProblem as e:
         print(e, file=sys.stderr)
         return 1
+    except scanner.ScanInterrupted as e:
+        print("%s Run `netwatch scan` again." % e, file=sys.stderr)
+        return 1
     con = db.connect()
     stored = {d["mac"]: d for d in db.devices(con)}
     rows = []
@@ -73,7 +76,8 @@ def cmd_scan(args):
         note = "NEW" if d.mac in result.new else "this Mac" if d.is_self else "router" if d.is_gateway else ""
         rows.append([d.ip, identify.display_name(dev), identify.vendor_label(dev), d.mac, note])
     print(table(rows, ["IP", "NAME", "VENDOR", "MAC", ""]))
-    print("\n%d devices in %.1f s" % (len(result.devices), result.duration))
+    n = len(result.devices)
+    print("\n%d device%s in %.1f s" % (n, "" if n == 1 else "s", result.duration))
     if result.baseline:
         print("First scan: these devices are saved as the baseline (no alerts for them).")
     elif result.new:

@@ -8,6 +8,9 @@ from .netinfo import is_private_mac
 
 TYPES = ("phone", "laptop", "tv", "router", "other")
 KEEP_DAYS = 90
+# Sleeping phones skip a scan now and then. A device seen this recently before the latest scan still
+# counts as online, so "online now" matches what's actually in the house.
+ONLINE_GRACE = 15 * 60
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS devices (
@@ -134,15 +137,12 @@ def last_scan(con):
 
 
 def devices(con):
-    """All devices, each with `online` (seen in the latest scan), newest first-seen last."""
+    """All devices, each with `online` (seen within ONLINE_GRACE of the latest scan), newest first-seen last."""
     scan = last_scan(con)
-    online = set()
-    if scan:
-        online = {r[0] for r in con.execute("SELECT mac FROM sightings WHERE scan_id=?", (scan["id"],))}
     rows = []
     for r in con.execute("SELECT * FROM devices ORDER BY first_seen, mac"):
         d = dict(r)
-        d["online"] = d["mac"] in online
+        d["online"] = bool(scan and d["last_seen"] >= scan["ts"] - ONLINE_GRACE)
         d["is_self"] = bool(scan and d["mac"] == scan["self_mac"])
         d["is_gateway"] = bool(scan and d["mac"] == scan["gateway_mac"])
         rows.append(d)

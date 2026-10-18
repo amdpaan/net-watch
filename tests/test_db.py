@@ -39,12 +39,23 @@ def test_new_device_after_baseline(con):
 
 def test_online_and_offline(con):
     scan(con, [ROUTER, SELF, TV], now=1000)
-    scan(con, [ROUTER, SELF], now=1300)
+    scan(con, [ROUTER, SELF], now=1000 + 16 * 60)  # TV missing for longer than the grace
     by_mac = {d["mac"]: d for d in db.devices(con)}
     assert by_mac[ROUTER.mac]["online"] and by_mac[ROUTER.mac]["is_gateway"]
     assert by_mac[SELF.mac]["is_self"]
     assert not by_mac[TV.mac]["online"]
     assert by_mac[TV.mac]["last_seen"] == 1000
+
+
+def test_one_missed_scan_still_counts_as_online(con):
+    """A sleeping phone that skips one or two 5-minute scans hasn't left the house."""
+    scan(con, [ROUTER, PHONE], now=1000)
+    scan(con, [ROUTER], now=1300)
+    scan(con, [ROUTER], now=1600)
+    assert {d["mac"]: d["online"] for d in db.devices(con)}[PHONE.mac]
+    assert db.summary(con, True, now=1600)["online"] == 2
+    scan(con, [ROUTER], now=1000 + db.ONLINE_GRACE + 1)
+    assert not {d["mac"]: d["online"] for d in db.devices(con)}[PHONE.mac]
 
 
 def test_hostname_and_vendor_kept_when_missing_later(con):

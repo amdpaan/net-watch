@@ -41,7 +41,7 @@ uses only the Python that ships with macOS (`/usr/bin/python3`, standard library
    Phones and laptops often use a **private (randomized) MAC**: the "locally administered" bit is set, so
    no vendor owns it. Those show as "Private MAC" instead of "Unknown vendor".
 6. **Memory.** Each scan is saved to SQLite: one row per device (label, type, vendor, hostname, first and
-   last seen, last IP) and one sighting per device per scan. Sightings older than 90 days are pruned.
+   last seen, last IP) and one sighting per device per scan. Sightings older than 90 days are pruned. A device counts as **online** if it was seen within 15 minutes of the latest scan, because phones asleep in a pocket skip a scan now and then. If the Mac goes to sleep in the middle of a scan, that scan is thrown away rather than saved half-finished, and after waking net-watch scans again within about half a minute.
    The **first scan is a baseline**: whatever is on your network then counts as already seen, so you don't
    get a burst of alerts. After that, any MAC never seen before is a new device.
 
